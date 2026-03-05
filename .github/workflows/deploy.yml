@@ -36,18 +36,33 @@ jobs:
           path: ./dist
       - name: Check for new blog post
         id: check
+        shell: bash
         run: |
           NEW_POST=$(git diff --name-only --diff-filter=A HEAD~1 HEAD -- 'src/content/blog/*.md' 'src/content/blog/*.mdx' | head -1)
           if [ -n "$NEW_POST" ]; then
-            echo "new_post=true" >> $GITHUB_OUTPUT
-            TITLE=$(grep '^title:' "$NEW_POST" | head -1 | sed 's/^title: *"\{0,1\}\(.*\)"\{0,1\}$/\1/')
-            DESC=$(grep '^description:' "$NEW_POST" | head -1 | sed 's/^description: *"\{0,1\}\(.*\)"\{0,1\}$/\1/')
+            echo "new_post=true" >> "$GITHUB_OUTPUT"
+            TITLE=$(python3 -c "
+          import re, sys
+          text = open('$NEW_POST').read()
+          m = re.search(r'^title:\s*[\"'']?(.*?)[\"'']?\s*$', text, re.M)
+          print(m.group(1) if m else '')
+          ")
+            DESC=$(python3 -c "
+          import re, sys
+          text = open('$NEW_POST').read()
+          m = re.search(r'^description:\s*[\"'']?(.*?)[\"'']?\s*$', text, re.M)
+          print(m.group(1) if m else '')
+          ")
             SLUG=$(basename "$NEW_POST" | sed 's/\.\(md\|mdx\)$//')
-            echo "post_title=$TITLE" >> $GITHUB_OUTPUT
-            echo "post_description=$DESC" >> $GITHUB_OUTPUT
-            echo "post_slug=$SLUG" >> $GITHUB_OUTPUT
+            echo "post_title<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$TITLE" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "post_description<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$DESC" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "post_slug=$SLUG" >> "$GITHUB_OUTPUT"
           else
-            echo "new_post=false" >> $GITHUB_OUTPUT
+            echo "new_post=false" >> "$GITHUB_OUTPUT"
           fi
 
   deploy:
@@ -66,19 +81,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send Telegram notification
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          POST_TITLE: ${{ needs.build.outputs.post_title }}
+          POST_DESC: ${{ needs.build.outputs.post_description }}
+          POST_SLUG: ${{ needs.build.outputs.post_slug }}
         run: |
-          TITLE="${{ needs.build.outputs.post_title }}"
-          DESC="${{ needs.build.outputs.post_description }}"
-          SLUG="${{ needs.build.outputs.post_slug }}"
-          URL="https://laksarkhip.ru/blog/${SLUG}/?utm_source=telegram&utm_medium=channel&utm_campaign=new_post"
+          URL="https://laksarkhip.ru/blog/${POST_SLUG}/?utm_source=telegram&utm_medium=channel&utm_campaign=new_post"
+          TEXT=$(printf '<b>%s</b>\n\n%s\n\n<a href="%s">Читать на сайте →</a>' "$POST_TITLE" "$POST_DESC" "$URL")
 
-          TEXT="<b>${TITLE}</b>
-
-          ${DESC}
-
-          <a href=\"${URL}\">Читать на сайте →</a>"
-
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+          curl -sf -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d chat_id="${CHAT_ID}" \
             -d parse_mode="HTML" \
-            -d text="$TEXT"
+            --data-urlencode text="$TEXT"
