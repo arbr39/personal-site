@@ -16,8 +16,15 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      new_post: ${{ steps.check.outputs.new_post }}
+      post_title: ${{ steps.check.outputs.post_title }}
+      post_description: ${{ steps.check.outputs.post_description }}
+      post_slug: ${{ steps.check.outputs.post_slug }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -27,6 +34,21 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
+      - name: Check for new blog post
+        id: check
+        run: |
+          NEW_POST=$(git diff --name-only --diff-filter=A HEAD~1 HEAD -- 'src/content/blog/*.md' 'src/content/blog/*.mdx' | head -1)
+          if [ -n "$NEW_POST" ]; then
+            echo "new_post=true" >> $GITHUB_OUTPUT
+            TITLE=$(grep '^title:' "$NEW_POST" | head -1 | sed 's/^title: *"\{0,1\}\(.*\)"\{0,1\}$/\1/')
+            DESC=$(grep '^description:' "$NEW_POST" | head -1 | sed 's/^description: *"\{0,1\}\(.*\)"\{0,1\}$/\1/')
+            SLUG=$(basename "$NEW_POST" | sed 's/\.\(md\|mdx\)$//')
+            echo "post_title=$TITLE" >> $GITHUB_OUTPUT
+            echo "post_description=$DESC" >> $GITHUB_OUTPUT
+            echo "post_slug=$SLUG" >> $GITHUB_OUTPUT
+          else
+            echo "new_post=false" >> $GITHUB_OUTPUT
+          fi
 
   deploy:
     needs: build
@@ -37,3 +59,26 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  notify:
+    needs: [build, deploy]
+    if: needs.build.outputs.new_post == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram notification
+        run: |
+          TITLE="${{ needs.build.outputs.post_title }}"
+          DESC="${{ needs.build.outputs.post_description }}"
+          SLUG="${{ needs.build.outputs.post_slug }}"
+          URL="https://laksarkhip.ru/blog/${SLUG}/?utm_source=telegram&utm_medium=channel&utm_campaign=new_post"
+
+          TEXT="<b>${TITLE}</b>
+
+          ${DESC}
+
+          <a href=\"${URL}\">Читать на сайте →</a>"
+
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d parse_mode="HTML" \
+            -d text="$TEXT"
