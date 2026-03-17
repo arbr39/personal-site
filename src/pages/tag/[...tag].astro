@@ -1,0 +1,102 @@
+---
+import { getCollection } from 'astro:content';
+import BaseHead from '../../components/BaseHead.astro';
+import Footer from '../../components/Footer.astro';
+import Header from '../../components/Header.astro';
+import { SITE_TITLE } from '../../consts';
+
+export async function getStaticPaths() {
+	const posts = await getCollection('blog');
+	const tagSet = new Set<string>();
+	for (const post of posts) {
+		for (const t of post.data.tags ?? []) {
+			tagSet.add(t);
+		}
+	}
+	return Array.from(tagSet).map((tag) => {
+		const tagPosts = posts
+			.filter((p) => p.data.tags?.includes(tag))
+			.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+		return {
+			params: { tag },
+			props: { tag, posts: tagPosts },
+		};
+	});
+}
+
+interface Props {
+	tag: string;
+	posts: Awaited<ReturnType<typeof getCollection<'blog'>>>;
+}
+
+const { tag, posts } = Astro.props;
+---
+
+<!doctype html>
+<html lang="ru">
+	<head>
+		<BaseHead
+			title={`${tag} — ${SITE_TITLE}`}
+			description={`Посты с тегом «${tag}»`}
+		/>
+	</head>
+	<body>
+		<Header />
+		<main>
+			<h1>Тег: {tag}</h1>
+			<ul class="post-list">
+				{posts.map((post) => (
+					<li>
+						<time datetime={post.data.pubDate.toISOString()}>
+							{post.data.pubDate.toLocaleDateString('ru-RU', {
+								year: 'numeric',
+								month: 'short',
+								day: 'numeric',
+							})}
+						</time>
+						<a href={`/blog/${post.id}/`}>{post.data.title}</a>
+					</li>
+				))}
+			</ul>
+		</main>
+		<Footer />
+	</body>
+</html>
+
+<style>
+	h1 {
+		margin-bottom: 1.5em;
+		font-size: 1.4em;
+	}
+	.post-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+	}
+	.post-list li {
+		display: flex;
+		align-items: baseline;
+		gap: 1em;
+		padding: 0.4em 0;
+	}
+	.post-list time {
+		color: var(--text-light);
+		font-size: 0.85em;
+		white-space: nowrap;
+		min-width: 7em;
+	}
+	.post-list a {
+		color: var(--text);
+		text-decoration: none;
+	}
+	.post-list a:hover {
+		text-decoration: underline;
+	}
+	@media (max-width: 640px) {
+		.post-list li {
+			flex-direction: column;
+			gap: 0.1em;
+			padding: 0.6em 0;
+		}
+	}
+</style>

@@ -4,17 +4,43 @@ import BlogPost from '../../layouts/BlogPost.astro';
 
 export async function getStaticPaths() {
 	const posts = await getCollection('blog');
-	return posts.map((post) => ({
-		params: { slug: post.id },
-		props: post,
-	}));
+	const sorted = [...posts].sort(
+		(a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
+	);
+	return posts.map((post) => {
+		const index = sorted.findIndex((p) => p.id === post.id);
+		const prev = index < sorted.length - 1 ? sorted[index + 1] : null;
+		const next = index > 0 ? sorted[index - 1] : null;
+		const wordCount = (post.body ?? '').split(/\s+/).filter(Boolean).length;
+		const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
+		return {
+			params: { slug: post.id },
+			props: {
+				post,
+				readingTimeMinutes,
+				prev: prev ? { id: prev.id, title: prev.data.title } : null,
+				next: next ? { id: next.id, title: next.data.title } : null,
+			},
+		};
+	});
 }
-type Props = CollectionEntry<'blog'>;
 
-const post = Astro.props;
+interface Props {
+	post: CollectionEntry<'blog'>;
+	readingTimeMinutes: number;
+	prev: { id: string; title: string } | null;
+	next: { id: string; title: string } | null;
+}
+
+const { post, readingTimeMinutes, prev, next } = Astro.props;
 const { Content } = await render(post);
 ---
 
-<BlogPost {...post.data}>
+<BlogPost
+	{...post.data}
+	readingTimeMinutes={readingTimeMinutes}
+	prev={prev}
+	next={next}
+>
 	<Content />
 </BlogPost>

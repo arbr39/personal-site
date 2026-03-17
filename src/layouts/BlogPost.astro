@@ -5,9 +5,13 @@ import BaseHead from '../components/BaseHead.astro';
 import Footer from '../components/Footer.astro';
 import Header from '../components/Header.astro';
 
-type Props = CollectionEntry<'blog'>['data'];
+type Props = CollectionEntry<'blog'>['data'] & {
+	readingTimeMinutes?: number;
+	prev?: { id: string; title: string } | null;
+	next?: { id: string; title: string } | null;
+};
 
-const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
+const { title, description, pubDate, updatedDate, heroImage, tags, readingTimeMinutes, prev, next } = Astro.props;
 ---
 
 <html lang="ru">
@@ -27,16 +31,44 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 							(обновлено {updatedDate.toLocaleDateString('ru-RU', { year: 'numeric', month: 'long', day: 'numeric' })})
 						</span>
 					)}
+					{readingTimeMinutes != null && (
+						<span class="reading-time">· {readingTimeMinutes} мин чтения</span>
+					)}
 					<h1>{title}</h1>
+					{tags && tags.length > 0 && (
+						<ul class="tags">
+							{tags.map((tag: string) => (
+								<li><a href={`/tag/${encodeURIComponent(tag)}/`}>{tag}</a></li>
+							))}
+						</ul>
+					)}
 				</header>
 				{heroImage && (
 					<div class="hero-image">
-						<Image width={640} src={heroImage} alt="" />
+						{typeof heroImage === 'string' ? (
+							<img src={heroImage} alt="" width={640} />
+						) : (
+							<Image width={640} src={heroImage} alt="" />
+						)}
 					</div>
 				)}
 				<div class="prose">
 					<slot />
 				</div>
+				{(prev || next) && (
+					<nav class="post-nav" aria-label="Навигация по постам">
+						{prev ? (
+							<a href={`/blog/${prev.id}/`} class="nav-prev">← {prev.title}</a>
+						) : (
+							<span />
+						)}
+						{next ? (
+							<a href={`/blog/${next.id}/`} class="nav-next">{next.title} →</a>
+						) : (
+							<span />
+						)}
+					</nav>
+				)}
 			</article>
 		</main>
 		<Footer />
@@ -70,5 +102,46 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 	}
 	.prose :global(img) {
 		margin: 1.5em 0;
+	}
+	.reading-time {
+		color: var(--text-light);
+		font-size: 0.85em;
+		margin-left: 0.25em;
+	}
+	.post-header .tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35em 0.75em;
+		list-style: none;
+		padding: 0;
+		margin: 0.5em 0 0 0;
+	}
+	.post-header .tags a {
+		color: var(--text-light);
+		text-decoration: none;
+		font-size: 0.9em;
+	}
+	.post-header .tags a:hover {
+		color: var(--text);
+	}
+	.post-nav {
+		display: flex;
+		justify-content: space-between;
+		gap: 1em;
+		margin-top: 3em;
+		padding-top: 2em;
+		border-top: 1px solid var(--border);
+		font-size: 0.95em;
+	}
+	.post-nav a {
+		text-decoration: none;
+		color: var(--text);
+		max-width: 45%;
+	}
+	.post-nav a:hover {
+		text-decoration: underline;
+	}
+	.nav-next {
+		text-align: right;
 	}
 </style>
